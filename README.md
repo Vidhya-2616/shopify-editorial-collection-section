@@ -1,0 +1,1 @@
+# shopify-editorial-collection-section
