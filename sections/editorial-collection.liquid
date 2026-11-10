@@ -1,0 +1,862 @@
+{%- comment -%}
+  Editorial Collection
+  A hero panel followed by product cards. Each card shows a large photo with
+  the product name and price on the image, an auto-calculated sale badge, a
+  second-image hover swap (desktop) and a quick add-to-cart button (mobile).
+
+  Desktop: hero + 3 visible cards, navigated with prev/next arrows.
+  Mobile:  horizontal scroll-snap row.
+
+  Note: after a successful add-to-cart the section dispatches generic cart
+  events. Hook them to your theme's cart drawer if it uses different ones.
+{%- endcomment -%}
+
+{%- liquid
+  assign col = collections[section.settings.collection]
+  assign total = col.products.size
+  assign shown = total | at_most: section.settings.max_products
+  assign gap = section.settings.card_gap
+  assign separator = section.settings.title_separator
+  assign title_color = section.settings.title_color | default: '#1A1A18'
+  assign price_color = section.settings.price_color | default: '#5A5956'
+  assign icon_color = section.settings.icon_color | default: '#FAFAF8'
+  assign sizes_attr = '(min-width: 768px) 25vw, 72vw'
+-%}
+
+{%- if col != blank and total > 0 -%}
+  <style>
+    #ec-{{ section.id }} {
+      --ec-gap: {{ gap }}px;
+      --ec-gap-mobile: {{ section.settings.mobile_gap }}px;
+      --ec-title-size: {{ section.settings.title_font_size }}px;
+      --ec-price-size: {{ section.settings.price_font_size }}px;
+      --ec-title-color: {{ title_color }};
+      --ec-price-color: {{ price_color }};
+      --ec-icon-color: {{ icon_color }};
+      background: #FAFAF8;
+      padding: {{ section.settings.section_padding }}px {{ section.settings.section_padding }}px {{ section.settings.section_padding | times: 0.8 | round }}px;
+      font-family: var(--font-body-family, 'DM Sans', sans-serif);
+      position: relative;
+    }
+
+    #ec-{{ section.id }} .ec-row {
+      display: flex;
+      gap: var(--ec-gap);
+      align-items: stretch;
+      position: relative;
+    }
+
+    #ec-{{ section.id }} .ec-panel {
+      flex: 0 0 calc((100% - var(--ec-gap) * 3) / 4);
+      min-width: 0;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #ec-{{ section.id }} .ec-box {
+      display: block;
+      position: relative;
+      width: 100%;
+      padding-bottom: 150%;
+      overflow: hidden;
+      text-decoration: none;
+    }
+
+    #ec-{{ section.id }} .ec-hero-panel .ec-box {
+      padding-bottom: 0;
+      height: 100%;
+      flex: 1;
+    }
+
+    #ec-{{ section.id }} .ec-img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.6s ease;
+    }
+
+    #ec-{{ section.id }} .ec-img-hover {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      transition: opacity 0.35s ease;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    #ec-{{ section.id }} .ec-img-hover img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* Hover effects only on devices that can hover */
+    @media (hover: hover) {
+      #ec-{{ section.id }} .ec-box:hover .ec-img {
+        transform: scale(1.04);
+      }
+
+      #ec-{{ section.id }} .ec-card-panel .ec-box:hover .ec-img-hover {
+        opacity: 1;
+      }
+    }
+
+    #ec-{{ section.id }} .ec-info {
+      position: absolute;
+      top: 1rem;
+      left: 1rem;
+      right: 1rem;
+      z-index: 3;
+      pointer-events: none;
+    }
+
+    #ec-{{ section.id }} .ec-name {
+      margin: 0 0 3px;
+      font-size: var(--ec-title-size);
+      font-weight: 400;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      line-height: 1.55;
+      color: var(--ec-title-color);
+    }
+
+    #ec-{{ section.id }} .ec-price {
+      margin: 0;
+      font-size: var(--ec-price-size);
+      font-weight: 300;
+      letter-spacing: 0.06em;
+      color: var(--ec-price-color);
+    }
+
+    #ec-{{ section.id }} .ec-compare {
+      margin-left: 6px;
+      font-size: 0.92em;
+      text-decoration: line-through;
+      opacity: 0.6;
+    }
+
+    #ec-{{ section.id }} .ec-box .ec-sale-badge {
+      position: absolute;
+      top: 0;
+      right: {{ section.settings.badge_offset }}px;
+      z-index: 5;
+      padding: {{ section.settings.badge_padding_v }}px {{ section.settings.badge_padding_h }}px;
+      background: #006039;
+      color: #fff;
+      font-size: {{ section.settings.badge_font_size }}px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      line-height: 1.2;
+      text-align: center;
+      text-transform: uppercase;
+      white-space: nowrap;
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+      pointer-events: none;
+    }
+
+    /* Hero */
+    #ec-{{ section.id }} .ec-hero-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      padding: 0 1.2rem;
+      text-align: center;
+    }
+
+    #ec-{{ section.id }} .ec-hero-label {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 10px;
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+      color: rgba(250, 250, 248, 0.8);
+    }
+
+    #ec-{{ section.id }} .ec-hero-title {
+      margin: 0;
+      font-family: var(--font-heading-family, 'Cormorant Garamond', serif);
+      font-weight: 300;
+      font-style: italic;
+      font-size: 1.75rem;
+      line-height: 1.1;
+      letter-spacing: 0.02em;
+      color: #FAFAF8;
+    }
+
+    #ec-{{ section.id }} .ec-hero-cta {
+      display: inline-block;
+      margin-top: 2px;
+      padding: 0.48rem 1.2rem;
+      border: 0.75px solid rgba(250, 250, 248, 0.55);
+      font-size: 10px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: #FAFAF8;
+      transition: background 0.3s, border-color 0.3s;
+    }
+
+    #ec-{{ section.id }} .ec-box:hover .ec-hero-cta,
+    #ec-{{ section.id }} .ec-box:focus-visible .ec-hero-cta {
+      background: rgba(250, 250, 248, 0.12);
+      border-color: rgba(250, 250, 248, 0.9);
+    }
+
+    /* Desktop hover bar */
+    #ec-{{ section.id }} .ec-bar {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 3;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 42px;
+      background: #1A1A18;
+      transform: translateY(100%);
+      transition: transform 0.26s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+      pointer-events: none;
+    }
+
+    #ec-{{ section.id }} .ec-box:hover .ec-bar,
+    #ec-{{ section.id }} .ec-box:focus-visible .ec-bar {
+      transform: translateY(0);
+    }
+
+    #ec-{{ section.id }} .ec-bar-label {
+      font-size: 10px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: #FAFAF8;
+    }
+
+    #ec-{{ section.id }} .ec-bar-icon {
+      position: absolute;
+      right: 1rem;
+      display: flex;
+    }
+
+    #ec-{{ section.id }} .ec-icon {
+      width: 15px;
+      height: 15px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    #ec-{{ section.id }} .ec-bar-icon .ec-icon {
+      color: #FAFAF8;
+    }
+
+    #ec-{{ section.id }} .ec-box:focus-visible {
+      outline: 2px solid #1A1A18;
+      outline-offset: -4px;
+    }
+
+    /* Desktop: hide cards outside the current window */
+    @media (min-width: 768px) {
+      #ec-{{ section.id }} .ec-card-panel.is-hidden {
+        display: none;
+      }
+    }
+
+    /* Mobile add-to-cart button, hidden on desktop */
+    #ec-{{ section.id }} .ec-atc {
+      display: none;
+    }
+
+    /* Desktop arrows */
+    #ec-{{ section.id }} .ec-nav {
+      position: absolute;
+      top: 50%;
+      right: -20px;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      transform: translateY(-50%);
+    }
+
+    #ec-{{ section.id }} .ec-nav-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      border: 0.75px solid #C8C6C0;
+      border-radius: 50%;
+      background: #FAFAF8;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    #ec-{{ section.id }} .ec-nav-btn:hover:not(:disabled) {
+      border-color: #1A1A18;
+      background: #F2F0EA;
+    }
+
+    #ec-{{ section.id }} .ec-nav-btn:disabled {
+      opacity: 0.2;
+      cursor: default;
+    }
+
+    #ec-{{ section.id }} .ec-nav-btn svg {
+      width: 10px;
+      height: 10px;
+      fill: none;
+      stroke: #1A1A18;
+      stroke-width: 1.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    #ec-{{ section.id }} .ec-swipe-hint {
+      display: none;
+    }
+
+    #ec-{{ section.id }} .ec-sr {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+    }
+
+    /* Mobile */
+    @media (max-width: 767px) {
+      #ec-{{ section.id }} {
+        padding: {{ section.settings.mobile_padding }}px 0 {{ section.settings.mobile_padding | times: 0.8 | round }}px;
+        overflow: hidden;
+      }
+
+      #ec-{{ section.id }} .ec-row {
+        flex-wrap: nowrap;
+        gap: var(--ec-gap-mobile);
+        overflow-x: auto;
+        overflow-y: hidden;
+        scroll-snap-type: x mandatory;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+        padding: 0 {{ section.settings.mobile_padding }}px;
+        box-sizing: border-box;
+      }
+
+      #ec-{{ section.id }} .ec-row::-webkit-scrollbar {
+        display: none;
+      }
+
+      #ec-{{ section.id }} .ec-panel {
+        flex: 0 0 72vw;
+        scroll-snap-align: start;
+      }
+
+      #ec-{{ section.id }} .ec-img-hover,
+      #ec-{{ section.id }} .ec-bar,
+      #ec-{{ section.id }} .ec-nav {
+        display: none;
+      }
+
+      #ec-{{ section.id }} .ec-hero-title {
+        font-size: 1.35rem;
+      }
+
+      #ec-{{ section.id }} .ec-hero-overlay {
+        gap: 10px;
+      }
+
+      #ec-{{ section.id }} .ec-info {
+        top: 0.75rem;
+        left: 0.75rem;
+        right: 0.4rem;
+      }
+
+      #ec-{{ section.id }} .ec-name {
+        font-size: {{ section.settings.title_font_size | times: 0.9 | round }}px;
+      }
+
+      #ec-{{ section.id }} .ec-price {
+        font-size: {{ section.settings.price_font_size | times: 0.9 | round }}px;
+      }
+
+      #ec-{{ section.id }} .ec-box .ec-sale-badge {
+        right: {{ section.settings.badge_offset | times: 0.7 | round }}px;
+        font-size: {{ section.settings.badge_font_size | minus: 1 }}px;
+        padding: {{ section.settings.badge_padding_v | times: 0.8 | round }}px {{ section.settings.badge_padding_h | times: 0.8 | round }}px;
+      }
+
+      #ec-{{ section.id }} .ec-atc {
+        position: absolute;
+        right: 10px;
+        bottom: 10px;
+        z-index: 4;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 36px;
+        height: 36px;
+        padding: 0;
+        border: none;
+        background: transparent;
+        color: var(--ec-icon-color);
+        cursor: pointer;
+        -webkit-appearance: none;
+        appearance: none;
+      }
+
+      #ec-{{ section.id }} .ec-atc .ec-icon {
+        width: 16px;
+        height: 16px;
+      }
+
+      #ec-{{ section.id }} .ec-atc .ec-icon-check {
+        display: none;
+      }
+
+      #ec-{{ section.id }} .ec-atc.is-added .ec-icon-bag {
+        display: none;
+      }
+
+      #ec-{{ section.id }} .ec-atc.is-added .ec-icon-check {
+        display: block;
+      }
+
+      #ec-{{ section.id }} .ec-swipe-hint {
+        position: absolute;
+        top: 50%;
+        right: 6px;
+        z-index: 5;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        border: 0.5px solid rgba(26, 26, 24, 0.1);
+        border-radius: 50%;
+        background: rgba(250, 250, 248, 0.88);
+        transform: translateY(-50%);
+        pointer-events: none;
+      }
+
+      #ec-{{ section.id }} .ec-swipe-hint svg {
+        width: 8px;
+        height: 8px;
+        fill: none;
+        stroke: #1A1A18;
+        stroke-width: 1.6;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      #ec-{{ section.id }} * {
+        transition: none !important;
+      }
+    }
+  </style>
+
+  <section
+    id="ec-{{ section.id }}"
+    data-visible="3"
+    data-shown="{{ shown }}"
+    data-cart-add-url="{{ routes.cart_add_url }}.js"
+    aria-label="{{ section.settings.collection_label | escape }}"
+  >
+    <div class="ec-row">
+
+      {%- comment -%} Hero panel {%- endcomment -%}
+      <div class="ec-panel ec-hero-panel">
+        <a class="ec-box" href="{{ col.url }}">
+          {%- if section.settings.hero_image != blank -%}
+            {{
+              section.settings.hero_image
+              | image_url: width: 1000
+              | image_tag:
+                class: 'ec-img',
+                loading: 'eager',
+                widths: '400, 600, 800, 1000',
+                sizes: sizes_attr,
+                alt: col.title
+            }}
+          {%- else -%}
+            {{ 'lifestyle-1' | placeholder_svg_tag: 'ec-img' }}
+          {%- endif -%}
+          <div class="ec-hero-overlay">
+            <div>
+              <span class="ec-hero-label">{{ section.settings.collection_label | escape }}</span>
+              <h2 class="ec-hero-title">{{ section.settings.hero_title | escape | newline_to_br }}</h2>
+            </div>
+            <span class="ec-hero-cta">{{ section.settings.cta_text | escape }}</span>
+          </div>
+        </a>
+      </div>
+
+      {%- comment -%} Product cards {%- endcomment -%}
+      {%- for product in col.products limit: shown -%}
+        {%- liquid
+          assign variant = product.selected_or_first_available_variant | default: product.variants.first
+          assign on_sale = false
+          if variant.compare_at_price > variant.price
+            assign on_sale = true
+            assign discount_pct = variant.compare_at_price | minus: variant.price | times: 100.0 | divided_by: variant.compare_at_price | round
+          endif
+          if separator != blank
+            assign title_parts = product.title | split: separator
+            assign display_title = title_parts[0]
+          else
+            assign display_title = product.title
+          endif
+        -%}
+
+        <div class="ec-panel ec-card-panel" data-index="{{ forloop.index0 }}">
+          <a class="ec-box" href="{{ product.url }}">
+            {%- if product.featured_image -%}
+              {{
+                product.featured_image
+                | image_url: width: 800
+                | image_tag:
+                  class: 'ec-img',
+                  loading: 'lazy',
+                  widths: '300, 450, 600, 800',
+                  sizes: sizes_attr,
+                  alt: product.featured_image.alt | default: product.title
+              }}
+            {%- else -%}
+              {{ 'product-1' | placeholder_svg_tag: 'ec-img' }}
+            {%- endif -%}
+
+            {%- if product.images[1] != blank -%}
+              <div class="ec-img-hover" aria-hidden="true">
+                {{
+                  product.images[1]
+                  | image_url: width: 800
+                  | image_tag:
+                    loading: 'lazy',
+                    widths: '300, 450, 600, 800',
+                    sizes: sizes_attr,
+                    alt: ''
+                }}
+              </div>
+            {%- endif -%}
+
+            <div class="ec-info">
+              <p class="ec-name">{{ display_title }}</p>
+              <p class="ec-price">
+                {{ variant.price | money_without_trailing_zeros }}
+                {%- if on_sale -%}
+                  <span class="ec-compare">{{ variant.compare_at_price | money_without_trailing_zeros }}</span>
+                {%- endif -%}
+              </p>
+            </div>
+
+            {%- if on_sale -%}
+              <div class="ec-sale-badge">{{ section.settings.badge_prefix | escape }} {{ discount_pct }}%</div>
+            {%- endif -%}
+
+            <div class="ec-bar" aria-hidden="true">
+              <span class="ec-bar-label">{{ section.settings.bar_text | escape }}</span>
+              <span class="ec-bar-icon">
+                <svg class="ec-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/>
+                  <line x1="3" y1="6" x2="21" y2="6"/>
+                  <path d="M16 10a4 4 0 01-8 0"/>
+                </svg>
+              </span>
+            </div>
+          </a>
+
+          {%- comment -%} Outside the link so tapping it does not navigate {%- endcomment -%}
+          {%- if product.available and variant.available -%}
+            <button
+              type="button"
+              class="ec-atc"
+              data-variant-id="{{ variant.id }}"
+              aria-label="Add {{ product.title | escape }} to cart"
+            >
+              <svg class="ec-icon ec-icon-bag" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/>
+                <line x1="3" y1="6" x2="21" y2="6"/>
+                <path d="M16 10a4 4 0 01-8 0"/>
+              </svg>
+              <svg class="ec-icon ec-icon-check" viewBox="0 0 24 24" aria-hidden="true">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            </button>
+          {%- endif -%}
+        </div>
+      {%- endfor -%}
+
+      {%- comment -%} Desktop arrows {%- endcomment -%}
+      <div class="ec-nav" role="group" aria-label="Collection navigation">
+        <button type="button" class="ec-nav-btn" data-dir="prev" aria-label="Previous products" disabled>
+          <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M8 2L4 6L8 10"/></svg>
+        </button>
+        <button type="button" class="ec-nav-btn" data-dir="next" aria-label="Next products">
+          <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2L8 6L4 10"/></svg>
+        </button>
+      </div>
+
+      {%- comment -%} Mobile swipe hint {%- endcomment -%}
+      <div class="ec-swipe-hint" aria-hidden="true">
+        <svg viewBox="0 0 12 12"><path d="M4 2L8 6L4 10"/></svg>
+      </div>
+    </div>
+
+    <p class="ec-sr" role="status" aria-live="polite" data-status></p>
+  </section>
+
+  <script>
+    (function () {
+      var root = document.getElementById('ec-{{ section.id }}');
+      if (!root) return;
+
+      var VISIBLE = parseInt(root.dataset.visible, 10);
+      var SHOWN = parseInt(root.dataset.shown, 10);
+      var MAX = Math.max(SHOWN - VISIBLE, 0);
+      var current = 0;
+
+      var cards = Array.prototype.slice.call(root.querySelectorAll('.ec-card-panel'));
+      var prev = root.querySelector('[data-dir="prev"]');
+      var next = root.querySelector('[data-dir="next"]');
+      var status = root.querySelector('[data-status]');
+
+      /* Desktop window: CSS only hides .is-hidden cards at >= 768px */
+      function render() {
+        cards.forEach(function (card, i) {
+          card.classList.toggle('is-hidden', i < current || i >= current + VISIBLE);
+        });
+        prev.disabled = current === 0;
+        next.disabled = current >= MAX;
+      }
+
+      prev.addEventListener('click', function () {
+        if (current > 0) { current--; render(); }
+      });
+      next.addEventListener('click', function () {
+        if (current < MAX) { current++; render(); }
+      });
+      render();
+
+      /* Mobile quick add to cart */
+      function announce(message) {
+        if (status) status.textContent = message;
+      }
+
+      root.querySelectorAll('.ec-atc').forEach(function (btn) {
+        btn.addEventListener('click', function (event) {
+          event.preventDefault();
+          event.stopPropagation();
+          if (btn.disabled) return;
+          btn.disabled = true;
+
+          fetch(root.dataset.cartAddUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            body: JSON.stringify({ id: btn.dataset.variantId, quantity: 1 })
+          })
+            .then(function (res) {
+              if (!res.ok) throw new Error('Add to cart failed');
+              return res.json();
+            })
+            .then(function () {
+              btn.classList.add('is-added');
+              announce('Added to cart');
+
+              /* Theme-specific: tell the cart drawer to refresh */
+              document.dispatchEvent(new CustomEvent('cart:updated', { bubbles: true }));
+              document.dispatchEvent(new CustomEvent('cart:refresh', { bubbles: true }));
+              if (typeof window.refreshCart === 'function') window.refreshCart();
+
+              setTimeout(function () {
+                btn.classList.remove('is-added');
+                btn.disabled = false;
+              }, 2000);
+            })
+            .catch(function () {
+              announce('Could not add this item to the cart');
+              btn.disabled = false;
+            });
+        });
+      });
+    })();
+  </script>
+{%- elsif request.design_mode -%}
+  <div style="padding: 40px; text-align: center; background: #FAFAF8;">
+    Choose a collection in the section settings to display products.
+  </div>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "Editorial collection",
+  "tag": "div",
+  "settings": [
+    { "type": "header", "content": "Hero panel" },
+    { "type": "image_picker", "id": "hero_image", "label": "Hero image" },
+    {
+      "type": "text",
+      "id": "collection_label",
+      "label": "Small text above the title",
+      "default": "The Knit Archive"
+    },
+    {
+      "type": "textarea",
+      "id": "hero_title",
+      "label": "Hero title",
+      "info": "Press Enter for a line break.",
+      "default": "New\nArrivals"
+    },
+    { "type": "text", "id": "cta_text", "label": "Button text", "default": "Shop Now" },
+
+    { "type": "header", "content": "Products" },
+    { "type": "collection", "id": "collection", "label": "Collection" },
+    {
+      "type": "range",
+      "id": "max_products",
+      "min": 3,
+      "max": 12,
+      "step": 1,
+      "default": 7,
+      "label": "Max products to show"
+    },
+    { "type": "text", "id": "bar_text", "label": "Hover bar text", "default": "View product" },
+    {
+      "type": "text",
+      "id": "title_separator",
+      "label": "Title separator",
+      "info": "Only the part of the product title before this text is shown. Leave empty to show the full title.",
+      "default": " — "
+    },
+
+    { "type": "header", "content": "Card colours" },
+    { "type": "color", "id": "title_color", "label": "Title colour", "default": "#1A1A18" },
+    { "type": "color", "id": "price_color", "label": "Price colour", "default": "#5A5956" },
+    { "type": "color", "id": "icon_color", "label": "Mobile add-to-cart icon colour", "default": "#FAFAF8" },
+
+    { "type": "header", "content": "Card typography" },
+    {
+      "type": "range",
+      "id": "title_font_size",
+      "min": 8,
+      "max": 16,
+      "step": 1,
+      "default": 10,
+      "label": "Title font size",
+      "unit": "px"
+    },
+    {
+      "type": "range",
+      "id": "price_font_size",
+      "min": 8,
+      "max": 16,
+      "step": 1,
+      "default": 10,
+      "label": "Price font size",
+      "unit": "px"
+    },
+
+    { "type": "header", "content": "Sale badge" },
+    { "type": "text", "id": "badge_prefix", "label": "Badge text", "default": "Save" },
+    {
+      "type": "range",
+      "id": "badge_font_size",
+      "min": 7,
+      "max": 14,
+      "step": 1,
+      "default": 10,
+      "label": "Badge font size",
+      "unit": "px"
+    },
+    {
+      "type": "range",
+      "id": "badge_padding_v",
+      "min": 4,
+      "max": 16,
+      "step": 1,
+      "default": 8,
+      "label": "Badge vertical padding",
+      "unit": "px"
+    },
+    {
+      "type": "range",
+      "id": "badge_padding_h",
+      "min": 4,
+      "max": 16,
+      "step": 1,
+      "default": 6,
+      "label": "Badge horizontal padding",
+      "unit": "px"
+    },
+    {
+      "type": "range",
+      "id": "badge_offset",
+      "min": 0,
+      "max": 40,
+      "step": 2,
+      "default": 12,
+      "label": "Badge distance from right edge",
+      "unit": "px"
+    },
+
+    { "type": "header", "content": "Layout" },
+    {
+      "type": "range",
+      "id": "section_padding",
+      "min": 16,
+      "max": 64,
+      "step": 4,
+      "default": 40,
+      "label": "Section padding (desktop)",
+      "unit": "px"
+    },
+    {
+      "type": "range",
+      "id": "card_gap",
+      "min": 4,
+      "max": 24,
+      "step": 2,
+      "default": 10,
+      "label": "Gap between cards (desktop)",
+      "unit": "px"
+    },
+    {
+      "type": "range",
+      "id": "mobile_gap",
+      "min": 0,
+      "max": 16,
+      "step": 2,
+      "default": 6,
+      "label": "Gap between cards (mobile)",
+      "unit": "px"
+    },
+    {
+      "type": "range",
+      "id": "mobile_padding",
+      "min": 0,
+      "max": 32,
+      "step": 4,
+      "default": 16,
+      "label": "Section padding (mobile)",
+      "unit": "px"
+    }
+  ],
+  "presets": [
+    { "name": "Editorial collection" }
+  ]
+}
+{% endschema %}
